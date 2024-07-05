@@ -1,0 +1,106 @@
+version: 0.2
+
+phases:
+  pre_build:
+    on-failure: ABORT
+    commands:
+      - |
+        if [[ -z "$ECR_IMAGE_TAG" ]]; then
+          echo "Error: ECR_IMAGE_TAG is not provided."
+          exit 1
+        fi
+      - |
+        if aws ecr describe-images --repository-name $IMAGE_REPO_NAME --image-ids imageTag=$ECR_IMAGE_TAG; then
+          echo "Image with tag $ECR_IMAGE_TAG exists in ECR."
+        else
+          echo "Error: Image with tag $ECR_IMAGE_TAG does not exist in ECR."
+          exit 1
+        fi
+
+  install:
+    on-failure: ABORT
+    commands:
+      - |
+        if ! command -v helm &> /dev/null; then
+          echo "Helm not found, installing...";
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3;
+          chmod 700 get_helm.sh;
+          ./get_helm.sh;
+        fi
+      - |
+        if ! command -v kubectl &> /dev/null; then
+          echo "kubectl not found, installing...";
+          curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.21.2/2021-07-05/bin/linux/amd64/kubectl;
+          chmod +x ./kubectl;
+          mv ./kubectl /usr/local/bin/kubectl;
+        fi
+
+  build:
+    on-failure: ABORT
+    commands: 
+      - secrets_json=$(aws secretsmanager get-secret-value --secret-id "${OTHER_SECRET_ID}" --query "SecretString" --output text)
+      - aws_secrets_json=$(aws secretsmanager get-secret-value --secret-id "${AWS_SECRET_ID}" --query "SecretString" --output text)
+
+      # Command 1: Create initial helm_values.yaml with predefined keys
+      - |
+        cat <<EOL > helm_values.yaml
+        image:
+          repository: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
+          tag: $ECR_IMAGE_TAG
+        name: backend-app
+        service:
+          type: ClusterIP
+          port: 80
+          targetport: 3000
+        env:
+          AWS_SECRET_ACCESS_KEY: $AWS_SECRET
+          AWS_ACCESS_KEY: $AWS_KEY
+          AWS_REGION: $AWS_REGION
+          AWS_BUCKET: $AWS_BUCKET
+        EOL
+
+      # Command 2: Append dynamic secret key-value pairs for other secrets
+      # Check if the value starts with a special character and wrap it in quotes
+      - |
+        for key in $(echo $secrets_json | jq -r 'keys[]'); do
+            value=$(echo $secrets_json | jq -r --arg key "$key" '.[$key]')
+            value_quotes="\"$value\""
+            echo "  $key: $value_quotes" >> helm_values.yaml
+        done
+
+      # Command 3: Append dynamic secret key-value pairs for aws secrets
+      - |
+        for key in $(echo $aws_secrets_json | jq -r 'keys[]'); do
+          value=$(echo $aws_secrets_json | jq -r --arg key "$key" '.[$key]')
+          echo "  $key: $value" >> helm_values.yaml
+        done
+      # Command 4: Append remaining static values
+
+      - |
+        cat <<EOL >> helm_values.yaml
+        ingress:
+          enabled: true
+          ingressClassName: "alb"
+          host: "${ENVIRONMENT}-backend.${CLOUDFLARE_ZONE_NAME}"
+          annotations:
+            alb.ingress.kubernetes.io/scheme: internet-facing
+            alb.ingress.kubernetes.io/certificate-arn: "${ACM_CERTIFICATE_ARN}"
+            alb.ingress.kubernetes.io/load-balancer-name: "${ALB_NAME}"
+            alb.ingress.kubernetes.io/target-type: ip
+            alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+            alb.ingress.kubernetes.io/healthcheck-path: "/"
+            alb.ingress.kubernetes.io/backend-protocol: HTTP
+            alb.ingress.kubernetes.io/ssl-redirect: '443'
+            alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+        EOL
+
+  post_build:
+    on-failure: ABORT
+    commands:
+      - CREDENTIALS=$(aws sts assume-role --role-arn $EKS_IAM_ROLE --role-session-name eks-codebuild --duration-seconds 900)
+      - export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
+      - export AWS_SECRET_ACCESS_KEY="$(echo ${CREDENTIALS} | jq -r '.Credentials.SecretAccessKey')"
+      - export AWS_SESSION_TOKEN="$(echo ${CREDENTIALS} | jq -r '.Credentials.SessionToken')"
+      - export AWS_EXPIRATION=$(echo ${CREDENTIALS} | jq -r '.Credentials.Expiration')
+      - aws eks --region $AWS_DEFAULT_REGION update-kubeconfig --name $EKS_CLUSTER
+      - helm upgrade --install backend-app ./backend-helm --values helm_values.yaml

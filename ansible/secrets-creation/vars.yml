@@ -1,0 +1,4 @@
+aws_region: "us-east-1"
+secret_name: "backed-app-secrets"
+env_vars:
+  PORT: 3000

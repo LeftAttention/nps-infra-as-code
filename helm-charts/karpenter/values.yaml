@@ -1,0 +1,15 @@
+name: default
+clusterName:
+subnetname:
+iamRoleName:
+# instanceSizes: ["xlarge", "2xlarge", "4xlarge", "8xlarge", "16xlarge", "24xlarge"]
+instanceFamilies: ["t3.2xlarge", "c5.4xlarge", "c5.9xlarge"]
+instanceName: 
+deviceName:
+taints:
+  - key:  user
+    value:
+    effect: "NoSchedule"
+labels:
+  user:
+amiFamily: linux

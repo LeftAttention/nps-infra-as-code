@@ -1,0 +1,43 @@
+---
+- name: Append or overwrite key-value pairs in AWS Secrets Manager secret
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Fetch the existing secret from AWS Secrets Manager
+      command: >
+        aws secretsmanager get-secret-value --secret-id {{ secret_name }} --region {{ aws_region }} --query 'SecretString' --output text
+      register: existing_secret
+      ignore_errors: yes
+
+    - name: Check if the secret was fetched successfully
+      set_fact:
+        secret_fetched: "{{ existing_secret.rc == 0 }}"
+
+    - name: Set existing secret fact
+      set_fact:
+        existing_secret: "{{ existing_secret.stdout | from_json }}"
+      when: secret_fetched
+
+    - name: Merge new environment variables with existing secrets
+      set_fact:
+        merged_secrets: "{{ existing_secret | combine(env_vars, recursive=True) }}"
+      when: secret_fetched
+
+    - name: Convert merged environment variables to JSON format
+      set_fact:
+        secret_string: "{{ (merged_secrets if secret_fetched else env_vars) | to_json }}"
+
+    - name: Create or update secret in AWS Secrets Manager
+      community.aws.aws_secret:
+        region: "{{ aws_region }}"
+        name: "{{ secret_name }}"
+        secret: "{{ secret_string }}"
+        state: present
+      register: secret_creation
+
+    - name: Debug secret creation result
+      debug:
+        var: secret_creation

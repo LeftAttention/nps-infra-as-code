@@ -1,0 +1,56 @@
+apiVersion: v2
+name: karpenter-resources
+description: Helm chart for configuring custom resources for Karpenter on the cluster
+version: 0.0.1
+appVersion: 0.0.1
+
+
+# cat <<EOF | envsubst | kubectl apply -f -
+# apiVersion: karpenter.sh/v1beta1
+# kind: NodePool
+# metadata:
+#   name: default
+# spec:
+#   template:
+#     metadata:
+#       labels:
+#         user: teir-3
+#     spec:
+#       requirements:
+#         - key: kubernetes.io/arch
+#           operator: In
+#           values: ["amd64"]
+#         - key: kubernetes.io/os
+#           operator: In
+#           values: ["linux"]
+#         - key: karpenter.sh/capacity-type
+#           operator: In
+#           values: ["spot"]
+#         - key: karpenter.k8s.aws/instance-category
+#           operator: In
+#           values: ["p"]
+#         - key: karpenter.k8s.aws/instance-generation
+#           operator: Gt
+#           values: ["2"]
+#       nodeClassRef:
+#         name: default
+#   limits:
+#     cpu: 1000
+#   disruption:
+#     consolidationPolicy: WhenUnderutilized
+#     expireAfter: 720h # 30 * 24h = 720h
+# ---
+# apiVersion: karpenter.k8s.aws/v1beta1
+# kind: EC2NodeClass
+# metadata:
+#   name: default
+# spec:
+#   amiFamily: AL2 # Amazon Linux 2
+#   role: "karpenter-fast-api-eks-cluster-2024030422223819190000001a" # replace with your cluster name
+#   subnetSelectorTerms:
+#     - tags:
+#         karpenter.sh/discovery: "fast-api-eks-cluster"
+#   securityGroupSelectorTerms:
+#     - tags:
+#         karpenter.sh/discovery: "fast-api-eks-cluster" # replace with your cluster name
+# EOF

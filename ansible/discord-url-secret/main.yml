@@ -1,0 +1,22 @@
+---
+- name: Create AWS Secrets Manager secret from environment variables
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - env_vars.yml
+
+  tasks:
+    - name: Convert environment variables to JSON format
+      set_fact:
+        secret_string: "{{ env_vars | to_json }}"
+
+    - name: Create secret in AWS Secrets Manager
+      community.aws.aws_secret:
+        name: discord-alerts-secret
+        secret: "{{ secret_string }}"
+        state: present
+      register: secret_creation
+
+    - name: Debug secret creation result
+      debug:
+        var: secret_creation

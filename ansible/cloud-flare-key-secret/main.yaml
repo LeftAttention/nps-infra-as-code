@@ -1,0 +1,21 @@
+- name: Prompt for Cloudflare API key and store it in AWS Secrets Manager
+  hosts: localhost
+  vars_prompt:
+    - name: cloudflare_api_key
+      prompt: "Please enter your Cloudflare API key"
+      private: yes
+  tasks:
+    - name: Convert Cloudflare API key to JSON format
+      set_fact:
+        secret_string: "{{ {'CLOUDFLARE_KEY': cloudflare_api_key} | to_json }}"
+
+    - name: Create secret in AWS Secrets Manager
+      community.aws.aws_secret:
+        name: cloudflare-api-key
+        secret: "{{ secret_string }}"
+        state: present
+      register: secret_creation
+
+    - name: Debug secret creation result
+      debug:
+        var: secret_creation
