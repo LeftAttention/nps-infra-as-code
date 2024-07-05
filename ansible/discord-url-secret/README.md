@@ -1,7 +1,3 @@
-Sure, here's a README file that includes instructions on how to use the provided Ansible playbook to create an AWS Secrets Manager secret from environment variables, as well as how to obtain the Discord URL:
-
----
-
 ## AWS Secrets Manager Setup
 
 ### Prerequisites
