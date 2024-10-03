@@ -1,4 +1,4 @@
-# TwinCiti Terraform IAC
+# Terraform IAC
 
 ## Summary
 
